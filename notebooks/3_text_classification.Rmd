@@ -1,0 +1,88 @@
+---
+title: "IMDb classification"
+output: html_notebook
+---
+
+In this example, we'll try to classify whether movie reviews on IMDb are positive or negative based on the review text.
+
+We'll start by loading some data that comes with the **keras** package. Here, `max_features` denotes the number of unique word tokens we want to consider.
+
+```{r}
+library(keras)
+max_features <- 20000
+imdb <- dataset_imdb(num_words = max_features)
+c(c(x_train, y_train), c(x_test, y_test)) %<-% imdb
+```
+
+Let's see what the training data looks like
+
+```{r}
+x_train[[1]]
+```
+
+To turn this into English, we can use the following helper function
+
+```{r}
+word_index <- dataset_imdb_word_index()
+reverse_word_index <- names(word_index)
+names(reverse_word_index) <- word_index
+decode_imdb <- function(indexes) {
+  force(indexes)
+  words <- sapply(indexes, function(index) {
+    word <- if (index >= 3) reverse_word_index[[as.character(index - 3)]]
+    if (!is.null(word)) word else "?"
+  })
+  paste(words, collapse = " ")
+}
+decode_imdb(x_train[[1]])
+```
+
+Since the reviews are of variable length, we need to get them all to the same length before we can feed them to the model.
+
+```{r}
+maxlen <- 80
+x_train <- pad_sequences(x_train, maxlen = maxlen)
+x_test <- pad_sequences(x_test, maxlen = maxlen)
+```
+
+Our `x_train` is now a matrix where each row corresponds to a review:
+
+```{r}
+str(x_train)
+```
+
+We can then define a model and compile it:
+
+```{r}
+model <- keras_model_sequential()
+model %>%
+  layer_embedding(input_dim = max_features, output_dim = 128) %>% 
+  layer_gru(units = 32, dropout = 0.2, recurrent_dropout = 0.2) %>% 
+  layer_dense(units = 1, activation = 'sigmoid')
+
+model %>% compile(
+  loss = 'binary_crossentropy',
+  optimizer = 'adam',
+  metrics = c('accuracy')
+)
+```
+
+Train the model and evaluate its performance
+
+```{r}
+model %>% fit(
+  x_train, y_train,
+  batch_size = batch_size,
+  epochs = 3,
+  validation_data = list(x_test, y_test)
+)
+
+scores <- model %>% evaluate(
+  x_test, y_test,
+  batch_size = batch_size
+)
+
+cat('Test loss:', scores[[1]])
+cat('Test accuracy', scores[[2]])
+```
+

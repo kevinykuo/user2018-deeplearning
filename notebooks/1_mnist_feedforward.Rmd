@@ -1,0 +1,111 @@
+---
+title: "MNIST example"
+output: html_notebook
+---
+
+We'll start with the "hello world" of neural nets --- classifying some handwritten digits!
+
+First, load the **keras** package and load a built-in dataset:
+
+```{r}
+library(keras)
+mnist <- dataset_mnist()
+str(mnist)
+```
+
+We see that `mnist$train$x` is an array of matrices that represent the images. Let's visualize a couple of them:
+
+```{r}
+plot_mnist_example <- function(i) {
+  plot(as.raster(mnist$train$x[i,,] / 255))
+}
+plot_mnist_example(1)
+plot_mnist_example(42)
+```
+
+Some necessary data massaging. 
+
+```{r}
+c(c(x_train, y_train), c(x_test, y_test)) %<-% mnist
+
+# Collapse each matrix to a 1-dimensional vector
+x_train <- array_reshape(x_train, c(nrow(x_train), 784))
+x_test <- array_reshape(x_test, c(nrow(x_test), 784))
+
+# Transform RGB values into [0,1] range
+x_train <- x_train / 255
+x_test <- x_test / 255
+
+# One-hot encode classes
+num_classes <- 10
+y_train <- to_categorical(y_train, num_classes)
+y_test <- to_categorical(y_test, num_classes)
+
+dim(x_train)
+dim(y_train)
+```
+
+We're now ready to define a neural network model!
+
+```{r}
+# Instantiate a Keras sequential model object
+model <- keras_model_sequential()
+
+# Define the model architecture, note the by-reference semantics
+model %>% 
+  layer_dense(units = 256, activation = 'relu', input_shape = c(784)) %>% 
+  layer_dropout(rate = 0.4) %>% 
+  layer_dense(units = 128, activation = 'relu') %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 10, activation = 'softmax')
+
+summary(model)
+```
+
+How do we know what the architecture should look like? It's a combination of (mostly) trial-and-error, experience, and looking at what others have done. Every problem is unique in some way!
+
+Once we've specified the architecture, we can `compile` the model by specifying the loss we're mimizing and the optimizer.
+
+```{r}
+model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = "adam",
+  metrics = c('accuracy')
+)
+```
+
+Now that we have a compiled model, we're ready to start training!
+
+```{r}
+# batch_size: how many observations we use per parameter update
+batch_size <- 128
+# epoch: one epoch is one full pass through the training dataset
+epochs <- 15
+
+history <- model %>% fit(
+  x_train, y_train,
+  batch_size = batch_size,
+  epochs = epochs,
+  verbose = 1,
+  validation_split = 0.2
+)
+
+plot(history)
+```
+
+Once the model is trained, we can `evaluate` it and look at some performance metrics
+
+```{r}
+score <- model %>% evaluate(
+  x_test, y_test,
+  verbose = 0
+)
+
+# Output metrics
+cat('Test loss:', score[[1]], '\n')
+cat('Test accuracy:', score[[2]], '\n')
+```
+
+# Manually inspecting predictions
+
+Can you make a couple predictions and check against the actual images?

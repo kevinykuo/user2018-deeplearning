@@ -1,0 +1,147 @@
+---
+title: "Predicting flight arrival delays"
+output: html_notebook
+---
+
+For this exercise, we'll work with the `flights` table from the `nycflights13` package. 
+
+```{r}
+library(tidyverse)
+flights <- nycflights13::flights
+glimpse(flights)
+```
+
+Our goal in this exercise is to predict arrival delays using information available as of takeoff for each flight.
+
+Let's do some light feature engineering:
+
+```{r}
+data <- flights %>%
+  filter(!is.na(arr_delay)) %>%
+  mutate(orig_dest = paste0(origin, dest)) %T>%
+  (function(x) {
+    orig_dest_levels <<- unique(x$orig_dest)
+    carrier_levels <<- unique(x$carrier)
+  }) %>%
+  mutate(
+    orig_dest = factor(orig_dest, levels = orig_dest_levels) %>%
+      as.integer() %>%
+      subtract(1),
+    carrier = factor(carrier, levels = carrier_levels) %>%
+      as.integer() %>%
+      subtract(1),
+    key = ifelse(month >= 11, "test", "train")
+    )
+training_data <- filter(data, key == "train")
+testing_data <- filter(data, key == "test")
+```
+
+We incorporate each predictor we want to include in the model by creating an input layer for it, then concatenating them.
+
+```{r}
+library(keras)
+carrier_input <- layer_input(shape = c(1))
+dep_delay_input <- layer_input(shape = c(1))
+distance_input <- layer_input(shape = c(1))
+origin_destination_input <- layer_input(shape = c(1))
+
+carrier_output <- carrier_input %>%
+  layer_embedding(16, 8) %>%
+  layer_flatten()
+
+origin_destination_output <- origin_destination_input %>%
+  layer_embedding(256, 128) %>%
+  layer_flatten()
+
+main_layer <- layer_concatenate(
+  c(dep_delay_input, distance_input,
+    carrier_output, origin_destination_output)
+  )
+
+output <- main_layer %>%
+  layer_dense(units = 256, activation = "relu") %>%
+  layer_dropout(0.2) %>%
+  layer_dense(units = 256) %>%
+  (function(x) layer_concatenate(c(x, dep_delay_input))) %>%
+  layer_dropout(0.2) %>%
+  layer_dense(units = 128) %>%
+  layer_dense(units = 1, activation = "linear")
+
+model <- keras_model(
+  list(dep_delay_input, distance_input, carrier_input,
+       origin_destination_input),
+  output
+)
+model %>%
+  compile(optimizer = "adam", loss = "mse")
+```
+
+We're passing our categorical variables through an embedding layer via `layer_embedding()`. The use case here is slightly different from the NLP example, but the intuition is similar: we're asking the model to learn a lower-dimensional representation of the high cardinality categorical variables in the context of the predictive modeling problem.
+
+To make training easier, we're going to scale each of the numeric variables, including the response. Here we define a function factory and use it create some helper functions.
+
+```{r}
+make_scaler <- function(x) {
+  scaled <- scale(x)
+  center_value <- attr(scaled, "scaled:center")
+  scale_value <- attr(scaled, "scaled:scale")
+  list(
+    scaler = function(x) {
+      force(x)
+      scale(x, center_value, scale_value)
+    },
+    descaler = function(x) {
+      force(x)
+      x * scale_value + center_value
+    }
+  )
+}
+
+c(scale_arr_delay, descale_arr_delay) %<-% make_scaler(training_data$arr_delay)
+c(scale_distance, descale_distance) %<-% make_scaler(training_data$distance)
+c(scale_dep_delay, descale_dep_delay) %<-% make_scaler(training_data$dep_delay)
+```
+
+Let's now traing the model!
+
+```{r}
+history <- model %>%
+  fit(list(scale_dep_delay(training_data$dep_delay), 
+           scale_distance(training_data$distance), 
+           training_data$carrier, training_data$orig_dest), 
+      scale_arr_delay(training_data$arr_delay),
+      batch_size = 256, epochs = 10,
+      validation_split = 0.2)
+```
+
+Score the testing dataset:
+
+```{r}
+predictions <- predict(
+  model, 
+  list(
+    scale_dep_delay(testing_data$dep_delay), 
+    scale_distance(testing_data$distance), 
+    testing_data$carrier, testing_data$orig_dest)
+) %>%
+  descale_arr_delay()
+```
+
+Look at some qualitative performance results:
+
+```{r}
+testing_data %>%
+  add_column(prediction = as.vector(predictions)) %>%
+  select(arr_delay, prediction) %>%
+  mutate(decile = cut(prediction, quantile(prediction, probs = seq(0, 1, 0.1)),
+                      labels = FALSE, include.lowest = TRUE)
+         ) %>%
+  group_by(decile) %>%
+  summarize(mean_actual = mean(arr_delay),
+            mean_predicted = mean(prediction)
+            ) %>%
+  gather(key, value, mean_actual, mean_predicted) %>%
+  ggplot(aes(x = as.factor(decile), y = value, fill = key)) +
+  geom_bar(stat = "identity", position = "dodge")
+```
+
