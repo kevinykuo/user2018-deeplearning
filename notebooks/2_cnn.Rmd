@@ -42,9 +42,9 @@ We're now ready to define a neural network model!
 ```{r}
 # Instantiate a Keras sequential model object
 model <- keras_model_sequential() %>%
-  layer_conv_2d(filters = 16, kernel_size = c(3,3), 
+  layer_conv_2d(filters = 128, kernel_size = c(3,3), 
                 activation = 'relu', input_shape = input_shape) %>% 
-  layer_conv_2d(filters = 8, kernel_size = c(3,3), 
+  layer_conv_2d(filters = 128, kernel_size = c(3,3), 
                 strides = 2, activation = 'relu') %>% 
   layer_max_pooling_2d(pool_size = c(2, 2)) %>%
   layer_dropout(rate = 0.25) %>%
