@@ -279,8 +279,9 @@ We're on a roll! In this next approach, we're going to set `return_sequences = T
 
 ```{r}
 model <- keras_model_sequential() %>%
-  layer_lstm(units = 128, input_shape = c(timesteps, 1),
+  layer_lstm(units = 64, input_shape = c(timesteps, 1),
              return_sequences = TRUE) %>%
+  layer_lstm(units = 64, return_sequences = TRUE) %>%
   layer_dense(1)
 
 model %>% 
@@ -302,6 +303,8 @@ plot_predictions(data, predictions)
 ```
 
 ## Fourth way: Seq2seq/Encoder-decoder architecture
+
+Adapted from [https://blog.keras.io/a-ten-minute-introduction-to-sequence-to-sequence-learning-in-keras.html](https://blog.keras.io/a-ten-minute-introduction-to-sequence-to-sequence-learning-in-keras.html)
 
 Our final approach is slightly more involved, and it corresponds to the middle "many to many" picture. We have an *encoder* network that summarizes the historical data into some numbers, and we also have a *decoder* network that translates these summary numbers into a forecast sequence. Each step in the prediction depends on the output and hidden state of the previous time stemp. During training, we provide the actual lagged values, and during prediction, we feed back the prediction for the previous timestep into the network. Let's now build the model.
 
