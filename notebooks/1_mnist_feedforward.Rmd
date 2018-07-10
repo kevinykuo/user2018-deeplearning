@@ -107,3 +107,19 @@ cat('Test accuracy:', score[[2]], '\n')
 # Manually inspecting predictions
 
 Can you make a couple predictions and check against the actual images?
+
+To make the predictions, we can use `predict_classes()`:
+
+```{r}
+predictions <- model %>%
+  predict_classes(x_test)
+predictions[1]
+```
+
+To get the raw probabilities:
+
+```{r}
+predictions_prob <- model %>%
+  predict_proba(x_test)
+```
+
